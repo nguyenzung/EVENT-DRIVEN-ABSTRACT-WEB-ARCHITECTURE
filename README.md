@@ -1,215 +1,94 @@
-# ARCHITECTURAL DOCUMENT: EVENT-DRIVEN ABSTRACTWEB ARCHITECTURE (ED-AWA)
-## System Design Protocol for AI Agent Collaboration
+# Architecture-as-a-Guardrail
 
-## 1. CONTEXT
+An event-driven web architecture designed as an **Architecture-as-a-Guardrail** to optimize collaboration with AI Agents and improve consistency in complex frontend systems.
 
-The current landscape of software engineering is witnessing a massive shift from human-direct coding to the use of AI Agents to automate the Frontend development lifecycle. Advanced AI Agents (such as high-level Agentic AI models with large codebase context) are now capable of understanding natural language requirements and autonomously modifying codebases.
+## 🎯 Shared Key Objective: Deterministic AI Simulation & Task Execution
 
-However, a critical conflict arises when Frontend systems evolve from static pages into complex distributed systems. Handling intricate Client-Side states—such as secure multi-party computation, real-time multi-device synchronization, or transaction flows with "rollback-on-crash" capabilities—is notoriously difficult.
+Both architectural approaches in this repository are designed to make **End-to-End (E2E) testing highly accessible, deterministic, and simulation-friendly**.
 
-In these environments, even a minor mistake in asynchronous logic can lead to catastrophic system-wide failures, including data corruption, node inconsistency, or permanent application freezes.
+The primary goal is to empower AI Agents to **execute complex development tasks with higher reliability** by giving them a runtime where real-world actions, asynchronous flows, and distributed scenarios can be tested in RAM.
 
-## 2. THE RATIONALE
+A key foundation is the use of explicit interfaces for external APIs such as network, storage, browser APIs, WebSocket, WASM, timers, workers, and device/session APIs. Because these boundaries are interface-driven, real external systems can be replaced by virtual test adapters.
 
-The Event-Driven AbstractWeb Architecture (ED-AWA) was not designed to optimize browser rendering performance. Instead, it serves as an **Architecture-as-a-Guardrail**, specifically built to address the fatal "blind spots" in an AI Agent’s reasoning process.
+One important example is the **VirtualNetworkHub**, which allows multiple app/runtime instances to communicate inside a controlled RAM-based environment without relying on real networks or flaky browser timing.
 
-### The "Local Optimization Trap" of AI
+This enables AI Agents to:
 
-AI Agents operate based on short-term probabilities within a limited Context Window. When tasked with fixing a UI bug or adding a feature, AI tends to:
+* **Simulate Real-World Actions:** Execute and verify user interactions, async effects, network latency, packet loss, delayed messages, and out-of-order events.
+* **Replicate Distributed Scenarios:** Model multi-node communication, multi-device coordination, relay behavior, and state synchronization.
+* **Verify Global Invariants:** Check that system-wide rules remain valid across complex state transitions and failure scenarios.
+* **Diagnose & Fix with Confidence:** Identify and resolve bugs in asynchronous or distributed flows without depending entirely on traditional browser E2E tests.
 
-*   Arbitrarily scatter independent state variables across display components to solve immediate local problems.
-*   Abuse reactive hooks to create complex, hidden side-effect chains between UI, Network, and Storage.
-*   Fix a local UI glitch while inadvertently breaking Global Invariants in the underlying distributed logic that it cannot see.
+## ⚖️ The Rule of Invariants: 100% Strict Adherence
 
-### Core Philosophy: Build Stricter Rails, Not Smarter AI
+In this architecture, **Invariants** are the non-negotiable laws of the system. They represent the "Ground Truth" that must remain valid regardless of user actions, network failures, or AI modifications.
 
-ED-AWA shifts the focus of control: We cannot force AI Agents to have a macro-architectural vision, but we can build a system with architectural "laws" so strict that even an average AI cannot crash the system.
+**Why this is critical for AI Agents:**
+AI often falls into the "Local Optimization Trap"—fixing a local UI bug while accidentally breaking a global rule it doesn't see. By centralizing logic into ED-AWA or HSLA cells, we create a **verification boundary** where:
+*   **Zero Compromise:** Every event processed through the Logic Core must be validated against a set of invariant checks.
+*   **Automatic Rejection:** If an AI proposes a code change or an event sequence that violates an invariant, the system (via RAM-based tests) will immediately reject it.
+*   **Explicit Contracts:** Invariants are not hidden in UI side-effects; they are explicitly defined in the Pure Logic Core, making them easy for AI to read, understand, and follow.
 
-This architecture strips the UI layer of any "agency" over the application flow, transforming it into a **Dumb View** and forcing all business logic into a deterministic "black box" that is 100% testable.
+AI Agents are required to treat Invariants as **Hard Constraints (100% adherence)**. A development task or bug fix is only considered complete if all global and local invariants are verified to be preserved across all simulated edge cases.
 
-## 3. THE THREE ARCHITECTURAL PILLARS
+## 📚 Architectural Approaches
 
-### Pillar 1: UI = f(ViewModel) — Absolute Display Independence
+The system is detailed through two complementary documents:
 
-The application is split into two isolated worlds:
+### 1. [ED-AWA: Event-Driven AbstractWeb Architecture](./ED-AWA.md)
 
-*   **Logic Core (Pure Core):** Receives strictly structured input events and outputs a single, immutable display state (**ViewModel**) stored in the Component Registry.
-*   **Display Layer (Dumb UI):** The UI library acts merely as a "printer." It reads data from the ViewModel to render the screen and binds physical user actions to standardized events, which are dispatched back to the Core.
+Defines the core principles of separating the **Logic Core** from the **UI Layer**.
 
-### Pillar 2: Headless E2E & Virtual Networking — State Isolation
+ED-AWA uses the `UI = f(ViewModel)` model, a Sequential Event Queue, pure controllers/FSMs, and an Effect Runner to make high-risk business logic deterministic, testable, and safer for AI-assisted modification.
 
-To make End-to-End (E2E) testing 100% deterministic and extremely fast, ED-AWA runs tests entirely in RAM by mocking the **Effect Runner** layer:
+It is especially suitable for flows such as multi-device synchronization, signing, recovery, reshare, transaction processing, rollback handling, and protocol-level state machines.
 
-```text
-┌─────────────────────────────── PURE RAM ENVIRONMENT (E2E) ────────────────────────────────┐
-│                                                                                            │
-│  [Node 1 Core Engine] ──(Effect: NETWORK_SEND)──> [VirtualNetworkHub] (Intercept/Route)    │
-│                                                            │                               │
-│                                                            ▼                               │
-│  [Node 2 Core Engine] <──────(Translated to Event: NET_*)──────────────────────────────────┘
-└────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+### 2. [HSLA: Hierarchical Screen-Loop Architecture](./HSLA.md)
 
-*   **State Isolation:** During testing, the system initializes independent instances of the processing core in RAM. Each instance has its own Component Registry and simulated storage, perfectly mimicking two separate physical devices.
-*   **VirtualNetworkHub:** Instead of real network cards, nodes communicate via an in-memory hub. When Node 1 generates a network command, the Hub intercepts it and injects it as an input event into Node 2's queue.
-*   **Chaos Engineering:** Because the entire environment is in-memory, we can simulate real-world uncertainty:
-    *   **Latency Simulation:** Delaying packets to test protocol timeouts.
-    *   **Packet Loss:** Dropping confirmation packets to force a crash and verify that the other node triggers a correct **ROLLBACK**.
+Defines a way to scale frontend applications through **Tree-like Autonomous Screens**.
 
-### Pillar 3: Type-Driven Constraint
+Each Screen cell has its own local state, event queue, processing loop, UI bridge, parent context, child screens, and lifecycle. HSLA helps AI Agents work within localized screen-level scopes while still keeping communication explicit and event-driven.
 
-The system forces AI Agents into a rigorous, procedural development workflow:
+HSLA also encourages external APIs to be accessed through interfaces or effect boundaries, which makes screen logic and domain flows suitable for headless testing and RAM-based simulation.
 
-*   **Contract First:** To add a feature, the AI *must* declare a specific **Event Type** in a central contract file.
-*   **Invariant Enforcement:** If the AI tries to scatter ad-hoc state variables in the UI layer, the code will be rejected during the invariant verification phase of the CI/CD pipeline.
-*   **Easy E2E Authoring:** Writing integration tests becomes trivial for the AI; it simply translates a business flow into an array of sequential event strings.
+## 🛠️ How to Choose and Combine
 
-## 4. COMPARATIVE ANALYSIS
+While ED-AWA and HSLA share a common philosophy, they operate at different levels of abstraction. Here is a guide on when to use which, and how to effectively combine them.
 
-| Criteria | Traditional Frontend Architecture | Event-Driven AbstractWeb Architecture (ED-AWA) |
-| :--- | :--- | :--- |
-| **State Management** | Distributed and scattered across UI components via flags. | Fully centralized in a pure Logic Core (Reducer/FSM). |
-| **AI Risk Level** | **High.** AI easily creates Race Conditions through uncontrolled async flows. | **Low.** The Sequential Event Queue eliminates data contention entirely. |
-| **E2E Testing** | Browser-dependent, relies on selectors, prone to "flakiness" from UI changes. | 100% RAM-based. Events are passed between objects. Maximum speed and accuracy. |
-| **UI Flexibility** | Difficult, as business logic is often tightly coupled with UI frameworks. | **High.** UI is just a function of the ViewModel. Swapping UI technologies is trivial. |
-| **Initial Overhead** | Low. Faster at the very start but scales poorly into complexity. | Moderate. Requires standardized Event/Effect templates from day one. |
+### When to use ED-AWA (The Logic Core)
+**Best for:** High-risk, complex, distributed, or global state logic.
+**Use cases:** 
+- Multi-device synchronization protocols.
+- Complex transaction flows (e.g., Web3 wallet signing, rollback mechanisms).
+- Background services requiring strict Sequential Event Queues and FSMs (Finite State Machines).
+- When a single global invariant MUST be protected at all costs.
+**Why:** It forces a rigid, central bottleneck (the queue) that makes race conditions impossible, which is perfect for AI agents dealing with high-stakes async logic.
 
-## 5. CORE TECHNICAL SPECIFICATION
+### When to use HSLA (The Scalable Skeleton)
+**Best for:** Organizing complex UI structures and localized workflows.
+**Use cases:**
+- Large applications with hundreds of screens (Dashboards, Admin Panels).
+- Multi-step forms or wizards where state is only relevant to that specific flow.
+- Preventing the "Global Store Bloat" by keeping transient UI state (e.g., drafts, currently open tabs) local.
+**Why:** It provides a "divide and conquer" approach. AI Agents can modify a single Screen Cell (its local queue, data, and UI) without fearing they will accidentally break another unrelated screen.
 
-To eliminate conceptual ambiguity, the AbstractWeb core must be composed of 5 entities with explicit boundaries:
+### 🤝 The Hybrid Approach: Combining ED-AWA and HSLA
+For large-scale, complex applications (e.g., a collaborative design tool or a secure multi-device wallet), the best approach is to combine them. 
 
-```text
-[UI/Net/Storage Input] 
-       │
-       ▼
-┌────────────────────────────────────── AbstractWeb Core ─────────────────────────────────────┐
-│                                                                                             │
-│  [Event Queue] ──(Serialization)──> [Feature Controllers / FSM]                             │
-│                                           │                                                 │
-│                                           ├───> Updates ───> [Component Registry] (Store)    │
-│                                           │                                                 │
-│                                           └───> Generates ───> [Effect Runner] (Adapters)   │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+**How to integrate:**
+1. **HSLA as the Macro-Architecture (The Skeleton):** Use HSLA to structure the application's UI hierarchy. Create the tree of `AppScreen -> FeatureScreen -> TabScreen`. This keeps the UI modular and limits the blast radius of UI changes.
+2. **ED-AWA as the Micro-Architecture (The Organs):** 
+   - **For Global Protocols:** Run an ED-AWA Logic Core globally alongside the Root AppScreen. Child screens communicate with this core via a central App/System Queue.
+   - **For Complex Local Flows:** Embed an ED-AWA engine *inside* a specific HSLA Screen. For example, a `TransferScreen` might use a simple HSLA queue for form inputs, but delegate the actual transaction protocol to an internal ED-AWA FSM.
 
-### 5.1. Sequential Event Queue
+In this hybrid model, HSLA ensures the application scales beautifully, while ED-AWA ensures the critical business logic remains bulletproof and 100% testable in RAM.
 
-*   **Nature:** An internal sequential array protected by a processing lock (`isProcessing`).
-*   **Mechanism:** When multiple event sources (User clicks, Network signals, Storage triggers) fire simultaneously, the Event Queue serializes them.
-*   **Anti-Reentrancy:** A `while (queue.length > 0)` loop processes events one-by-one. It only releases the lock after the state is fully updated and invariants are validated. This prevents "stale reads" where a network event reads data that a previous user action hasn't finished writing yet.
+## ✅ Summary
 
-### 5.2. Feature Controllers (FSM)
+ED-AWA and HSLA are complementary.
 
-*   **Nature:** Domain-specific logic handlers or Finite State Machines (FSM).
-*   **Mechanism:** These are **Pure Functions**. They take the `CurrentContext` and an `AppEvent` from the queue as inputs. They return exactly three things: a `NewContext`, a list of `Effects` (commands), and UI update instructions. They are isolated from async keywords and environment-specific APIs.
+ED-AWA focuses on **core runtime correctness**.
 
-### 5.3. Component Registry & Store
+HSLA focuses on **screen-level scalability and organization**.
 
-*   **Nature:** A flat Key-Value store holding the **ViewModel** for the entire app, indexed by fixed **TargetIDs**.
-*   **Mechanism:** Instead of maintaining a complex component tree (prone to memory leaks), the Registry manages raw data structures. When a Controller finishes its calculation, it overwrites the data at the corresponding ID. The UI layer simply "observes" its assigned ID.
-
-### 5.4. Effect Runner & Adapters
-
-*   **Nature:** The execution environment for all "impure" tasks (I/O, Network, Heavy computation).
-*   **Mechanism:** When a Controller emits a command (e.g., `{ type: "NETWORK_SEND", to: "node_b" }`), the Effect Runner maps it to a physical adapter. Once the task is complete, the result *must* be wrapped into an internal event and pushed back into the Event Queue to trigger a state update.
-
-### 5.5. Future-State Buffering Mechanics
-
-*   **Problem:** In distributed systems, a configuration packet might arrive at a node before that node has finished loading its core (still in an `INIT` state).
-*   **Solution:** The system defines a `shouldBuffer(event, currentState)` function. Valid but early events are stored in a `messageBuffer`. Once the Controller transitions to a compatible state, `flushBuffer` re-injects these events into the head of the Event Queue for immediate processing.
-
-## 6. CONCRETE REACT IMPLEMENTATION
-
-This structure serves as the mandatory template for AI Agents when bridging the pure logic core to the React rendering environment.
-
-### 6.1. Strict Data Contract (src/core/contracts.ts)
-
-```typescript
-export type AppEvent =
-    | { type: 'UI_INIT' }
-    | { type: 'UI_CLICK_NODE'; payload: { nodeId: string } }
-    | { type: 'UI_SUBMIT_IDENTITY'; payload: { token: string; code: string } }
-    | { type: 'INT_LOCAL_DATA_LOADED'; payload: { data: any } }
-    | { type: 'INT_NETWORK_RESPONSE'; payload: { success: boolean; result?: any } };
-
-// ViewModels are indexed by TargetID in the Component Registry
-export interface WelcomeViewModel {
-    welcomeMessage: string;
-    isButtonsDisabled: boolean;
-}
-
-export interface NodeListViewModel {
-    nodes: Array<{ id: string; name: string; status: 'online' | 'offline' }>;
-    selectedId: string | null;
-}
-```
-
-### 6.2. The Synchronization Bridge (src/react/bridge.tsx)
-
-```typescript
-import React, { createContext, useContext, useSyncExternalStore } from 'react';
-
-const EngineContext = createContext<any>(null);
-
-/**
- * useViewModel observes a specific slice of the Component Registry via TargetID.
- * This ensures that a re-render in one UI component doesn't trigger others 
- * unless their specific raw data in the Registry changes.
- */
-export function useViewModel<T>(targetId: string, selector: (data: any) => T): T {
-    const engine = useContext(EngineContext);
-    if (!engine) throw new Error("[ED-AWA Error] Missing AbstractWebProvider");
-    
-    return useSyncExternalStore(
-        (onStoreChange) => engine.subscribe(targetId, onStoreChange),
-        () => selector(engine.getFromRegistry(targetId))
-    );
-}
-
-export function useAppDispatch() {
-    const engine = useContext(EngineContext);
-    return (event: AppEvent) => engine.dispatch(event);
-}
-```
-
-### 6.3. Passive UI Layer (src/react/components/NodeManager.tsx)
-
-```typescript
-import React from 'react';
-import { useViewModel, useAppDispatch } from '../bridge';
-
-export const NodeManager: React.FC = () => {
-    const dispatch = useAppDispatch();
-    
-    // Observers assigned ID "NODE_LIST_PANEL" in the Registry
-    const { nodes, selectedId } = useViewModel("NODE_LIST_PANEL", (vm: NodeListViewModel) => vm);
-    
-    // The UI normalizes physical clicks into the standardized Architectural Event Contract
-    const handleNodeClick = (id: string) => {
-        dispatch({ type: 'UI_CLICK_NODE', payload: { nodeId: id } });
-    };
-
-    return (
-        <div className="node-grid">
-            {nodes.map(node => (
-                <div 
-                    key={node.id} 
-                    className={`node-card ${selectedId === node.id ? 'active' : ''}`}
-                    onClick={() => handleNodeClick(node.id)}
-                >
-                    <h3>{node.name}</h3>
-                    <span className={`status-${node.status}`}>{node.status}</span>
-                </div>
-            ))}
-            <button onClick={() => dispatch({ type: 'UI_INIT' })}>Reset System</button>
-        </div>
-    );
-};
-```
-
-## 7. LIMITATIONS AND TRADE-OFFS
-
-ED-AWA is not a "silver bullet." We accept two practical trade-offs:
-
-1.  **UI Physical Interaction Blind Spots:** While RAM-based logic tests are 100% accurate, they cannot detect if an AI wrote incorrect CSS that hides a button or places it behind an overlay. We still maintain a small set (approx. 10%) of traditional UI automation tests to verify the final visual layer.
-2.  **Overkill for Small Interactions:** This architecture is best suited for high-risk business flows (sync protocols, multi-step state transitions). For minor UI interactions (opening a simple dropdown, toggling a light/dark mode), forcing every event through the centralized Logic Core creates unnecessary boilerplate. In these "relaxed zones," we allow standard UI state management.
+Both approaches share the same larger goal: creating deterministic architectural guardrails so AI Agents can simulate, test, and modify complex frontend systems with higher reliability.
