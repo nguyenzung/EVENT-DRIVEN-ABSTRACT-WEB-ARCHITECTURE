@@ -11,7 +11,7 @@
 
 ### 2. Architectural Problems to Solve
 Modern frontend applications often struggle with state and side-effect scattering across `useState`, `useEffect`, custom hooks, and global stores. This leads to:
-*   **Difficult-to-understand components:** Logic is rải rác.
+*   **Difficult-to-understand components:** Logic is scattered.
 *   **Hidden side effects:** Async flows are hard to trace.
 *   **Race conditions:** Simultaneous updates clash in the UI.
 *   **AI Risk:** AI Agents easily fix local UI issues but accidentally break broader business logic.
@@ -41,7 +41,7 @@ A standard `Screen` is composed of 5 key elements:
 *   **Loop Lifecycle (`drain()`):** The heart of the cell. It must be **synchronous**. It updates data and collects effects to be run.
 *   **UI Bridge:** Decouples the screen from frameworks (React, DOM), enabling it to run in `RenderUI` (real app) or `LogicUI` (test).
 
-### 2. General Structure Sơ đồ
+### 2. General Structure Diagram
 ```text
 ┌────────────────────────────── Screen Cell ──────────────────────────────┐
 │                                                                          │
@@ -105,7 +105,7 @@ A capability that connects multiple app/runtime instances in RAM. It enables AI 
 *   **Simulate stressors:** Latency, packet loss, message reordering.
 *   **Verify Distributed Scenarios:** Multi-device coordination and state sync without real networks.
 
-### 2. RAM E2E Environment sơ đồ
+### 2. RAM E2E Environment Diagram
 ```text
 RAM E2E Environment
 ├── Node A Runtime (App Queue + Screen Queues + Virtual Network Adapter)

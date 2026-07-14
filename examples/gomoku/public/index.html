@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Online Gomoku</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffd700, #ffaa00);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 1px;
+    }
+
+    /* ── Connect panel ─────────────────────────────────────── */
+    #connect-panel {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 0.8rem; color: #8b949e; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+    .field input {
+      padding: 10px 14px;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      background: #0d1117;
+      color: #e6edf3;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .field input:focus { border-color: #ffd700; }
+
+    #connect-btn {
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #ffd700, #ffaa00);
+      color: #0d1117;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    #connect-btn:hover  { opacity: 0.9; transform: translateY(-1px); }
+    #connect-btn:active { transform: translateY(0); }
+    #connect-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    #connect-msg {
+      font-size: 0.85rem;
+      color: #8b949e;
+      text-align: center;
+      min-height: 1.4em;
+    }
+    #connect-msg.error { color: #f85149; }
+
+    /* ── Game panel ────────────────────────────────────────── */
+    #game-panel {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      max-width: 620px;
+    }
+
+    #status-bar {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 14px 20px;
+      width: 100%;
+      text-align: center;
+    }
+    #status {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #ffd700;
+    }
+    #info-row {
+      font-size: 0.85rem;
+      color: #8b949e;
+      margin-top: 4px;
+    }
+
+    canvas {
+      display: block;
+      max-width: 100%;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      cursor: crosshair;
+    }
+    canvas.no-move { cursor: default; }
+
+    #replay-btn {
+      display: none;
+      padding: 11px 32px;
+      border: none;
+      border-radius: 8px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #replay-btn:hover { background: #30363d; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-black { background: #333; color: #eee; }
+    .badge-white { background: #eee; color: #333; }
+  </style>
+</head>
+<body>
+
+<h1>Online Gomoku</h1>
+
+<!-- ── Step 1: Connection ────────────────────────────────────── -->
+<div id="connect-panel">
+  <div class="field">
+    <label>WebSocket Server Address</label>
+    <input id="server-url" value="ws://localhost:3001" spellcheck="false">
+  </div>
+  <div class="field">
+    <label>Player Name</label>
+    <input id="player-name" placeholder="Leave blank → auto-generate name">
+  </div>
+  <button id="connect-btn">Connect &amp; Find Match</button>
+  <div id="connect-msg"></div>
+</div>
+
+<!-- ── Step 2: Game ──────────────────────────────────────────── -->
+<div id="game-panel">
+  <div id="status-bar">
+    <div id="status">Loading…</div>
+    <div id="info-row"></div>
+  </div>
+  <canvas id="board-canvas"></canvas>
+  <button id="replay-btn">↩ Play Again</button>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  Constants
+// ════════════════════════════════════════════════════════════
+const BOARD_SIZE = 15;
+const CELL = 38;           // pixels per cell
+const PAD  = 30;           // board padding
+const CS   = CELL * (BOARD_SIZE - 1) + PAD * 2;  // canvas size
+
+// ════════════════════════════════════════════════════════════
+//  Pure game logic  (mirrors GameLogic.ts)
+// ════════════════════════════════════════════════════════════
+
+function createBoard() {
+  return Array.from({length: BOARD_SIZE}, () => Array(BOARD_SIZE).fill(null));
+}
+
+function placeStone(board, row, col, color) {
+  const b = board.map(r => [...r]);
+  b[row][col] = color;
+  return b;
+}
+
+function checkWin(board, row, col, color) {
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for (const [dr, dc] of dirs) {
+    let n = 1;
+    for (let s = 1; s <= 4; s++) {
+      const r = row+dr*s, c = col+dc*s;
+      if (r<0||r>=BOARD_SIZE||c<0||c>=BOARD_SIZE||board[r][c]!==color) break;
+      n++;
+    }
+    for (let s = 1; s <= 4; s++) {
+      const r = row-dr*s, c = col-dc*s;
+      if (r<0||r>=BOARD_SIZE||c<0||c>=BOARD_SIZE||board[r][c]!==color) break;
+      n++;
+    }
+    if (n >= 5) return true;
+  }
+  return false;
+}
+
+// ════════════════════════════════════════════════════════════
+//  EventQueue  (mirrors EventQueue.ts)
+// ════════════════════════════════════════════════════════════
+
+class EventQueue {
+  constructor(data, reducer, onFlush, onEffects, maxSteps = 1000) {
+    Object.assign(this, { data, reducer, onFlush, onEffects, maxSteps, q: [], busy: false });
+  }
+  dispatch(event) {
+    this.q.push(event);
+    if (!this.busy) this._drain();
+  }
+  _drain() {
+    this.busy = true;
+    const fx = [];
+    let steps = 0;
+    while (this.q.length) {
+      if (steps++ >= this.maxSteps) { this.busy = false; throw new Error('maxSteps exceeded'); }
+      const { data, effects } = this.reducer(this.data, this.q.shift());
+      this.data = data;
+      fx.push(...effects);
+    }
+    this.busy = false;
+    this.onFlush();
+    if (fx.length) this.onEffects(fx);
+  }
+  getData() { return this.data; }
+}
+
+// ════════════════════════════════════════════════════════════
+//  Reducer  (pure, synchronous — mirrors GameScreen.ts)
+// ════════════════════════════════════════════════════════════
+
+function reduce(data, event) {
+  const noop = { data, effects: [] };
+
+  if (event.type === 'UI_PLACE_STONE') {
+    const { row, col } = event.payload;
+    if (data.status !== 'playing')           return noop;
+    if (data.currentTurn !== data.myColor)   return noop;
+    if (data.board[row][col] !== null)       return noop;
+
+    const board = placeStone(data.board, row, col, data.myColor);
+    const won   = checkWin(board, row, col, data.myColor);
+    const draw  = !won && board.every(r => r.every(c => c !== null));
+    const next  = data.myColor === 'B' ? 'W' : 'B';
+
+    const nd = { ...data, board, moveCount: data.moveCount + 1,
+      currentTurn: (!won && !draw) ? next : data.currentTurn,
+      status: won ? 'won' : draw ? 'draw' : 'playing',
+      winner: won ? data.myColor : null };
+
+    const fx = [{ type: 'NET', to: data.opponentId,
+      msg: { type: 'PLACE_STONE', payload: { row, col, color: data.myColor, playerId: data.myId } } }];
+    if (nd.status !== 'playing')
+      fx.push({ type: 'NET', to: data.opponentId,
+        msg: { type: 'GAME_OVER', payload: { winner: nd.winner, reason: won ? 'five_in_row' : 'draw' } } });
+    return { data: nd, effects: fx };
+  }
+
+  if (event.type === 'NET_OPPONENT_PLACED') {
+    const { row, col, color } = event.payload;
+    if (data.status !== 'playing')     return noop;
+    if (data.board[row][col] !== null) return noop;
+    const board = placeStone(data.board, row, col, color);
+    const won   = checkWin(board, row, col, color);
+    const draw  = !won && board.every(r => r.every(c => c !== null));
+    const next  = data.currentTurn === 'B' ? 'W' : 'B';
+    return { data: { ...data, board, moveCount: data.moveCount + 1,
+      currentTurn: (!won && !draw) ? next : data.currentTurn,
+      status: won ? 'won' : draw ? 'draw' : 'playing',
+      winner: won ? color : null }, effects: [] };
+  }
+
+  if (event.type === 'NET_GAME_OVER') {
+    if (data.status !== 'playing') return noop;
+    return { data: { ...data, status: event.payload.winner ? 'won' : 'draw', winner: event.payload.winner }, effects: [] };
+  }
+
+  return noop;
+}
+
+// ════════════════════════════════════════════════════════════
+//  BrowserNetworkPort  (mirrors WsNetworkPort.ts but browser-native)
+// ════════════════════════════════════════════════════════════
+
+class BrowserNetworkPort {
+  constructor(ws) {
+    this.ws = ws;
+    this.handler = null;
+    this._onmsg = (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      if (msg.type === 'RELAY' && this.handler) this.handler(msg.from, msg.message);
+    };
+    ws.addEventListener('message', this._onmsg);
+  }
+  send(to, message) {
+    if (this.ws.readyState === WebSocket.OPEN)
+      this.ws.send(JSON.stringify({ type: 'RELAY', to, message }));
+  }
+  onMessage(handler) {
+    this.handler = handler;
+    return () => { this.handler = null; };
+  }
+  dispose() {
+    this.ws.removeEventListener('message', this._onmsg);
+    this.handler = null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  GameScreen  (mirrors GameScreen.ts)
+// ════════════════════════════════════════════════════════════
+
+class GameScreen {
+  constructor(myId, opponentId, gameId, myColor, port) {
+    this.port = port;
+    this._subs = [];
+    this._queue = new EventQueue(
+      { board: createBoard(), currentTurn: 'B', status: 'playing', winner: null,
+        myColor, myId, opponentId, gameId, moveCount: 0 },
+      (d, e) => reduce(d, e),
+      ()   => this._flush(),
+      (fx) => this._effects(fx)
+    );
+    this._disposeNet = port.onMessage((from, msg) => {
+      if (msg.type === 'PLACE_STONE')
+        this._queue.dispatch({ type: 'NET_OPPONENT_PLACED',
+          payload: { row: msg.payload.row, col: msg.payload.col, color: msg.payload.color } });
+      else if (msg.type === 'GAME_OVER')
+        this._queue.dispatch({ type: 'NET_GAME_OVER', payload: msg.payload });
+    });
+  }
+  _effects(fx) {
+    for (const f of fx) if (f.type === 'NET') this.port.send(f.to, f.msg);
+  }
+  _flush() {
+    const vm = this.getViewModel();
+    for (const fn of this._subs) fn(vm);
+  }
+  getViewModel() {
+    const d = this._queue.getData();
+    return { board: d.board, currentTurn: d.currentTurn, status: d.status,
+      winner: d.winner, myColor: d.myColor, moveCount: d.moveCount,
+      isMyTurn: d.status === 'playing' && d.currentTurn === d.myColor };
+  }
+  dispatch(e) { this._queue.dispatch(e); }
+  subscribe(fn) {
+    this._subs.push(fn);
+    return () => { this._subs = this._subs.filter(l => l !== fn); };
+  }
+  dispose() { this._disposeNet(); this._subs = []; }
+}
+
+// ════════════════════════════════════════════════════════════
+//  Canvas rendering
+// ════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('board-canvas');
+const ctx    = canvas.getContext('2d');
+canvas.width = canvas.height = CS;
+
+function px(n) { return PAD + n * CELL; }
+
+function drawBoard(board) {
+  // Wooden background
+  const bg = ctx.createLinearGradient(0, 0, CS, CS);
+  bg.addColorStop(0, '#D4A052');
+  bg.addColorStop(1, '#B8842C');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, CS, CS);
+
+  // Grid lines
+  ctx.strokeStyle = '#8B6000';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < BOARD_SIZE; i++) {
+    ctx.beginPath(); ctx.moveTo(px(i), PAD); ctx.lineTo(px(i), CS - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, px(i)); ctx.lineTo(CS - PAD, px(i)); ctx.stroke();
+  }
+
+  // Thick border
+  ctx.strokeStyle = '#6B4600'; ctx.lineWidth = 2;
+  ctx.strokeRect(PAD, PAD, CELL * (BOARD_SIZE-1), CELL * (BOARD_SIZE-1));
+
+  // Hoshi (star points)
+  ctx.fillStyle = '#6B4600';
+  for (const r of [3,7,11]) for (const c of [3,7,11]) {
+    ctx.beginPath();
+    ctx.arc(px(c), px(r), 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Stones
+  if (board) {
+    for (let r = 0; r < BOARD_SIZE; r++)
+      for (let c = 0; c < BOARD_SIZE; c++)
+        if (board[r][c]) drawStone(r, c, board[r][c]);
+  }
+}
+
+function drawStone(row, col, color) {
+  const x = px(col), y = px(row), R = CELL / 2 - 2;
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  if (color === 'B') {
+    const g = ctx.createRadialGradient(x - R*0.35, y - R*0.35, R*0.05, x, y, R);
+    g.addColorStop(0, '#6a6a6a'); g.addColorStop(1, '#111');
+    ctx.fillStyle = g;
+    ctx.fill();
+  } else {
+    const g = ctx.createRadialGradient(x - R*0.35, y - R*0.35, R*0.05, x, y, R);
+    g.addColorStop(0, '#fff'); g.addColorStop(1, '#d4d4d4');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = '#aaa'; ctx.lineWidth = 0.8; ctx.stroke();
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  UI State Machine
+// ════════════════════════════════════════════════════════════
+
+let gameScreen = null, netPort = null, ws = null;
+
+const $connect  = document.getElementById('connect-panel');
+const $game     = document.getElementById('game-panel');
+const $status   = document.getElementById('status');
+const $infoRow  = document.getElementById('info-row');
+const $msg      = document.getElementById('connect-msg');
+const $replay   = document.getElementById('replay-btn');
+
+function setMsg(text, isError = false) {
+  $msg.textContent = text;
+  $msg.className = isError ? 'error' : '';
+}
+
+function render(vm) {
+  drawBoard(vm.board);
+
+  const me = vm.myColor === 'B' ? '● Black' : '○ White';
+  $infoRow.textContent = `You: ${me}   |   Moves: ${vm.moveCount}`;
+
+  if (vm.status === 'won') {
+    $status.textContent = vm.winner === vm.myColor ? '🎉 You win!' : '😔 You lose.';
+    $replay.style.display = 'block';
+    canvas.className = 'no-move';
+  } else if (vm.status === 'draw') {
+    $status.textContent = '🤝 Draw!';
+    $replay.style.display = 'block';
+    canvas.className = 'no-move';
+  } else {
+    $status.textContent = vm.isMyTurn ? '⬤ Your turn — click on the board' : '○ Waiting for opponent…';
+    canvas.className = vm.isMyTurn ? '' : 'no-move';
+  }
+}
+
+// Canvas click → dispatch UI_PLACE_STONE
+canvas.addEventListener('click', (e) => {
+  if (!gameScreen) return;
+  const rect = canvas.getBoundingClientRect();
+  const col  = Math.round(((e.clientX - rect.left) * (CS / rect.width)  - PAD) / CELL);
+  const row  = Math.round(((e.clientY - rect.top)  * (CS / rect.height) - PAD) / CELL);
+  if (col < 0 || col >= BOARD_SIZE || row < 0 || row >= BOARD_SIZE) return;
+  gameScreen.dispatch({ type: 'UI_PLACE_STONE', payload: { row, col } });
+});
+
+$replay.addEventListener('click', () => {
+  gameScreen?.dispose();
+  netPort?.dispose();
+  location.reload();
+});
+
+// ════════════════════════════════════════════════════════════
+//  Connect flow
+// ════════════════════════════════════════════════════════════
+
+document.getElementById('connect-btn').addEventListener('click', () => {
+  const url  = document.getElementById('server-url').value.trim();
+  const name = document.getElementById('player-name').value.trim()
+               || 'player-' + Math.random().toString(36).slice(2, 6);
+
+  if (!url) { setMsg('Enter server address.', true); return; }
+
+  setMsg('Connecting…');
+  document.getElementById('connect-btn').disabled = true;
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'JOIN', playerId: name }));
+  };
+
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+
+    if (msg.type === 'WAITING') {
+      $connect.style.display = 'none';
+      $game.style.display = 'flex';
+      $status.textContent = '⏳ Finding opponent…';
+      $infoRow.textContent = `Logged in as: ${name}`;
+      drawBoard(null);
+      return;
+    }
+
+    if (msg.type === 'GAME_START') {
+      $connect.style.display = 'none';
+      $game.style.display = 'flex';
+
+      netPort    = new BrowserNetworkPort(ws);
+      gameScreen = new GameScreen(name, msg.opponentId, msg.gameId, msg.myColor, netPort);
+      gameScreen.subscribe(vm => render(vm));
+      render(gameScreen.getViewModel());
+      return;
+    }
+
+    if (msg.type === 'OPPONENT_DISCONNECTED') {
+      $status.textContent = '❌ Opponent disconnected.';
+      canvas.className = 'no-move';
+      $replay.style.display = 'block';
+      return;
+    }
+    // RELAY → handled by BrowserNetworkPort
+  };
+
+  ws.onerror = () => {
+    setMsg(`Could not connect: ${url}`, true);
+    document.getElementById('connect-btn').disabled = false;
+  };
+
+  ws.onclose = () => {
+    if (gameScreen && gameScreen.getViewModel().status === 'playing') {
+      $status.textContent = '❌ Server disconnected.';
+      canvas.className = 'no-move';
+      $replay.style.display = 'block';
+    }
+  };
+});
+</script>
+</body>
+</html>

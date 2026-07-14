@@ -92,3 +92,39 @@ ED-AWA focuses on **core runtime correctness**.
 HSLA focuses on **screen-level scalability and organization**.
 
 Both approaches share the same larger goal: creating deterministic architectural guardrails so AI Agents can simulate, test, and modify complex frontend systems with higher reliability.
+
+---
+
+## 🧪 Examples
+
+### [Gomoku Online](./examples/gomoku)
+
+A fully working 2-player online Gomoku game that demonstrates the architecture end-to-end:
+
+| What | How |
+|---|---|
+| Screen Cell (HSLA) | `GameScreen` — pure synchronous reducer, local event queue, effect runner |
+| Interface-driven network | `NetworkPort` swapped between RAM and real WebSocket without changing game logic |
+| RAM E2E (VirtualNetworkHub) | 14 tests, zero I/O, fully deterministic |
+| Real WebSocket server | Relay server + auto matchmaking for live play |
+| Browser client | Vanilla JS + Canvas, no bundler needed |
+
+**Play in browser — open 2 tabs on the same browser:**
+
+```bash
+cd examples/gomoku
+npm install
+
+npm run server   # Terminal 1 — WebSocket server on :3001
+npm run web      # Terminal 2 — HTTP server on :3000
+```
+
+Open `http://localhost:3000` in **2 browser tabs** → enter a name → click **Connect & Find Match**.
+
+**Run tests:**
+
+```bash
+cd examples/gomoku
+npm test
+# 17 tests: 14 RAM E2E + 3 real WebSocket integration
+```
