@@ -1,0 +1,22 @@
+{
+  "name": "gomoku-hsla-example",
+  "version": "1.0.0",
+  "description": "Online Gomoku — E2E demo with VirtualNetworkHub following HSLA + ED-AWA",
+  "type": "module",
+  "scripts": {
+    "test": "tsx e2e/game.e2e.ts && tsx e2e/server_integration.e2e.ts",
+    "test:unit": "tsx e2e/game.e2e.ts",
+    "test:integration": "tsx e2e/server_integration.e2e.ts",
+    "server": "tsx runner/server.ts",
+    "web":    "tsx runner/web.ts",
+    "client": "tsx runner/client.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}
