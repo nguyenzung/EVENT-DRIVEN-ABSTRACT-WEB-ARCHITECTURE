@@ -1,7 +1,5 @@
 /**
  * RAM E2E — Gomoku game with VirtualNetworkHub
- */
-
  * Tests are organized by HSLA/ED-AWA layered testing strategy:
  *   Layer 1  GameScreen logic in isolation
  *   Layer 2  VirtualNetworkHub: board sync across two nodes
@@ -14,7 +12,7 @@ import { VirtualNetworkHub } from '../src/VirtualNetworkHub.js';
 import { GameScreen } from '../src/screens/GameScreen.js';
 import { LogicUI } from '../src/ui/LogicUI.js';
 import { printBoard } from '../src/GameLogic.js';
-import { Stone } from '../src/contracts.js';
+import { Stone, BOARD_SIZE } from '../src/contracts.js';
 
 // ─── Minimal test harness ─────────────────────────────────────────────────────
 
@@ -72,6 +70,7 @@ function createGame(gameId = 'game-001'): GameFixture {
       uiWhite.dispose();
       black.dispose();
       white.dispose();
+      hub.dispose();
     },
   };
 }
@@ -304,6 +303,107 @@ test('move history is preserved on both nodes', () => {
 
   assert(g.black.getViewModel().moveCount === 3, 'Black sees 3 moves');
   assert(g.white.getViewModel().moveCount === 3, 'White sees 3 moves');
+  g.dispose();
+});
+
+test('random self-play: 2 bots play random legal moves until terminal state (win or draw max 225 moves), verifying 100% board synchronization at every step', () => {
+  const g = createGame('random-self-play-demo');
+  let step = 0;
+  const maxMoves = BOARD_SIZE * BOARD_SIZE;
+
+  // Pseudo-random generator for this E2E test with fixed seed for repeatability
+  let seed = 0x5e1f91a7;
+  function randomInt(max: number): number {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return Math.floor((seed / 0x100000000) * max);
+  }
+
+  while (g.black.getViewModel().status === 'playing' && step < maxMoves) {
+    const blackVm = g.black.getViewModel();
+
+    // Determine current player
+    const currentTurn = blackVm.currentTurn;
+    const currentScreen = currentTurn === 'B' ? g.black : g.white;
+
+    // Collect all legally available empty cells on the board
+    const availableCells: Array<[number, number]> = [];
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (blackVm.board[r][c] === null) {
+          availableCells.push([r, c]);
+        }
+      }
+    }
+
+    assert(availableCells.length > 0, `Step ${step}: no available empty cells left, but status is still playing`);
+
+    // Bot picks a random empty cell and places stone
+    const [row, col] = availableCells[randomInt(availableCells.length)]!;
+    currentScreen.dispatch({ type: 'UI_PLACE_STONE', payload: { row, col } });
+    step++;
+
+    // ── 100% Board Synchronization Verification at EVERY step ───────────────
+    const updatedBlack = g.black.getViewModel();
+    const updatedWhite = g.white.getViewModel();
+
+    // 1. Move count must match step and agree across nodes
+    assert(updatedBlack.moveCount === step, `Step ${step}: Black moveCount (${updatedBlack.moveCount}) !== step (${step})`);
+    assert(updatedWhite.moveCount === step, `Step ${step}: White moveCount (${updatedWhite.moveCount}) !== step (${step})`);
+
+    // 2. Status & currentTurn must agree across nodes
+    assert(updatedBlack.status === updatedWhite.status,
+      `Step ${step}: Status mismatch (Black=${updatedBlack.status}, White=${updatedWhite.status})`);
+    assert(updatedBlack.currentTurn === updatedWhite.currentTurn,
+      `Step ${step}: CurrentTurn mismatch (Black=${updatedBlack.currentTurn}, White=${updatedWhite.currentTurn})`);
+    assert(updatedBlack.winner === updatedWhite.winner,
+      `Step ${step}: Winner mismatch (Black=${updatedBlack.winner}, White=${updatedWhite.winner})`);
+
+    // 3. Every single cell on the 15x15 board (225 cells) must be 100% identical on both nodes
+    let blackStones = 0;
+    let whiteStones = 0;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        const cellB = updatedBlack.board[r][c];
+        const cellW = updatedWhite.board[r][c];
+        assert(cellB === cellW,
+          `Step ${step}: Cell (${r},${c}) diverged (Black sees '${cellB}', White sees '${cellW}')`);
+        if (cellB === 'B') blackStones++;
+        if (cellB === 'W') whiteStones++;
+      }
+    }
+
+    // 4. Stone counts on board must strictly equal moveCount and respect alternating turn rule
+    assert(blackStones + whiteStones === step,
+      `Step ${step}: Board stone sum (${blackStones + whiteStones}) !== step (${step})`);
+    assert(blackStones === whiteStones || blackStones === whiteStones + 1,
+      `Step ${step}: Stone turn balance invalid (Black=${blackStones}, White=${whiteStones})`);
+  }
+
+  const finalBlack = g.black.getViewModel();
+  const finalWhite = g.white.getViewModel();
+
+  // Final assertions
+  assert(finalBlack.status === 'won' || finalBlack.status === 'draw',
+    `Game did not conclude: status is '${finalBlack.status}' after ${step} moves`);
+  assert(finalBlack.status === finalWhite.status, 'Final status mismatch between nodes');
+  assert(finalBlack.winner === finalWhite.winner, 'Final winner mismatch between nodes');
+
+  if (finalBlack.status === 'won') {
+    assert(finalBlack.winner === 'B' || finalBlack.winner === 'W', 'Won game must have a winner (B or W)');
+  } else {
+    assert(finalBlack.status === 'draw' && finalBlack.winner === null && step === maxMoves,
+      'Draw game must have null winner and exactly 225 moves');
+  }
+
+  // Invariant: no moves can be placed after game over
+  const [dummyR, dummyC] = [0, 0];
+  g.black.dispatch({ type: 'UI_PLACE_STONE', payload: { row: dummyR, col: dummyC } });
+  g.white.dispatch({ type: 'UI_PLACE_STONE', payload: { row: dummyR, col: dummyC } });
+  assert(g.black.getViewModel().moveCount === finalBlack.moveCount, 'No moves allowed after game over on Black');
+  assert(g.white.getViewModel().moveCount === finalWhite.moveCount, 'No moves allowed after game over on White');
+
+  console.log(`\n  [Random Self-Play Result] Completed in ${step} moves. Status: ${finalBlack.status}. Winner: ${finalBlack.winner ?? 'Draw'}`);
+  console.log(`  [Random Self-Play Result] 100% of all 225 cells verified identical across both nodes at all ${step} steps.`);
   g.dispose();
 });
 

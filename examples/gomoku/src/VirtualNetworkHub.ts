@@ -68,5 +68,14 @@ export class VirtualNetworkHub {
   setLatency(ms: number): void { this.latencyMs = ms; }
   setPacketLossRate(rate: number): void { this.packetLossRate = rate; }
 
+  dispose(): void {
+    this.nodes.clear();
+    this.deliveryQueue = [];
+    if (this.deliveryTimer !== null) {
+      clearTimeout(this.deliveryTimer);
+      this.deliveryTimer = null;
+    }
+  }
+
   getNodeCount(): number { return this.nodes.size; }
 }
